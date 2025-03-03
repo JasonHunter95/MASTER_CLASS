@@ -56,7 +56,7 @@ Note that the <- sets a variable.
 # Then we will call the read.table() function that first requires a file path to the counts in quotes
 # Note that in R functions follow with () where the parameter inputs are placed.
 # Then we will call up different parameters with a comma, in this case header = TRUE, row.names =1
-counts_matrix <- read.table("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/04_RNAseq_Dox/01_Mouse_dox_wt/good_class_RNAseq/pipeline_output/star_salmon/salmon.merged.gene_counts.tsv", header=TRUE, row.names=1)
+counts_matrix <- read.table("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/data/salmon.merged.gene_counts.tsv", header=TRUE, row.names=1)
 
 # Nice, now we have an object called counts_matrix in our Environment Panel (top right)
 # Let's take a look 
@@ -75,6 +75,7 @@ To do this we will use the rownames function
 # Creating a dataframe with gene_id and gene_symbol
 # note creating columns with name = data
 g2s <- data.frame(gene_id = rownames(counts_matrix), gene_symbol = counts_matrix[ , 1])
+?data.frame
 
 # Let's save this using write.csv
 write.csv(g2s, "results/g2s.csv")

@@ -9,6 +9,9 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyr)
+library(dplyr)
 ```
 
 
@@ -23,7 +26,7 @@ So all we need for DESEQ2 is input counts and colData. We already got our counts
 load("results/count_files.RData", verbose = T)
 
 #IMPORTANT Raw counts file
-counts_matrix <- read.table("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/04_RNAseq_Dox/01_Mouse_dox_wt/good_class_RNAseq/pipeline_output/star_salmon/salmon.merged.gene_counts.tsv", header=TRUE, row.names=1)
+counts_matrix <- read.table("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/data/salmon.merged.gene_counts.tsv", header=TRUE, row.names=1)
 
 # Remove gene name column
 counts_matrix <-counts_matrix %>% 
