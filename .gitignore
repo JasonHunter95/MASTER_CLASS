@@ -61,4 +61,8 @@ work/*
 *fa
 *.bed
 *.gz
+lessons/04_RNAseq_Dox/01_Mouse_dox_wt/dox_long/job_output/
+lessons/05_RNAseq_in_R_studio/
+lessons/05_RNAseq_in_R_studio/03_Rskills_Reading_in_Data.Rmd
+lessons/05_RNAseq_in_R_studio/04_Rskills_DESEQ2_sample_input_file.Rmd
 
