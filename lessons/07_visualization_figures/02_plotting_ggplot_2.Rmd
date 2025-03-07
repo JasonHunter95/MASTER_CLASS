@@ -19,11 +19,11 @@ library(broom)
 # Load data
 ```{r loading our RNAseq analysis data TPM & COUNTS}
 
-# load TPM RESULTS: 
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.Rdata")
+# load TMP results
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.rdata")
 
-# laod DESEQ2 results
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
+# load DESEQ2 results
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
 
 ```
 

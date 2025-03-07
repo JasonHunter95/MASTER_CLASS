@@ -19,10 +19,10 @@ library(dplyr)
 # Load data
 ```{r loading our RNAseq analysis data TPM & COUNTS}
 # load TPM RESULTS: 
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.Rdata")
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.rdata")
 
-# laod DESEQ2 results
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
+# load DESEQ2 results
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
 ```
 
 # Summary of where we are at
@@ -106,7 +106,7 @@ ggplot(gene_values,
 # Note the axis are all the same for each plot -- let's use 'scales = free' parameter
 ggplot(gene_values, 
        aes(x = log2FoldChange, y = padj )) +
-  facet_wrap(gene_name ~ ., nrow = 2, ncol = 3, scales = "free") + 
+  facet_wrap(gene_name ~ ., nrow = 2, ncol = 3, scales = "free") +
   geom_point()
   
 # Nice now every plot is scaled according to data in the plot !
