@@ -251,7 +251,6 @@ ggplot(gene_values,
 
 # Same as before but now the lines are missing.
 # We called a color pallete but it wasn't needed :)
-
 ```
 
 

@@ -34,11 +34,10 @@ So take all of this with a grain of salt but is good to measure relative changes
 # Load data
 ```{r loading our RNAseq analysis data TPM & COUNTS}
 
-# load TPM RESULTS: 
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.Rdata")
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/TPM_results/TPM_results.rdata")
 
-# laod DESEQ2 results
-load("/scratch/Shares/rinnclass/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
+# load DESEQ2 results
+load("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/lessons/06_Differential_expression_analyses/results/counts_results_DESEQ/DESEQ_results.rdata")
 
 ```
 
@@ -58,6 +57,7 @@ Our goal here is to make a distribution of TPM values in each time point - using
 ```{r facet all timepoint TPM distributions}
 
 # First let's make set of time values for faceting:
+# create an object of time_values grabbing the names of the columns
 time_values <- c("0_avg", "12_avg", "24_avg", "48_avg", "96_avg")
 
 # This can also be done with grep (smarter):
@@ -67,6 +67,7 @@ average_and_stddev_values_2 <- rownames_to_column(average_and_stddev_values, var
 
 # Melt the data frame to long format
 melt_tpm_df <- melt(average_and_stddev_values_2, measure.vars = time_points, value_name = "gene_id")
+
 
 # Cool we just made it a really long df (compare original and melt) -it's 5x longer
 # Note the same can be done with pivot longer
