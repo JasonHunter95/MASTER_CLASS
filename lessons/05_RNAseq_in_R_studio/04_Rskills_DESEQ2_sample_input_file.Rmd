@@ -23,14 +23,15 @@ is associated with which sample.
 So all we need for DESEQ2 is input counts and colData. We already got our counts in order so lets load those!
 ```{r loading counts objects}
 
-load("results/count_files.RData", verbose = T)
+load("results/count_files.RData", verbose = TRUE)
 
 #IMPORTANT Raw counts file
-counts_matrix <- read.table("/scratch/Shares/rinnclass/MASTER_CLASS/STUDENTS/jahu8701/MASTER_CLASS/data/salmon.merged.gene_counts.tsv", header=TRUE, row.names=1)
+counts_matrix <- read.table("data/salmon.merged.gene_counts.tsv",
+                            header = TRUE, row.names = 1)
 
 # Remove gene name column
-counts_matrix <-counts_matrix %>% 
-  select(-"gene_name") 
+counts_matrix <- counts_matrix %>%
+  select(-"gene_name")
 View(counts_matrix)
 
 ```
@@ -115,7 +116,7 @@ We want to analyze time and replicates (OR MAYBE JUST TIME).
 So let's make time point a factored column in deseq_samples
 
 # 3) Factoring columns
-```{R facotring timepoint and replicate column}
+```{R factoring timepoint and replicate column}
 
 deseq_samples$time_point <- factor(deseq_samples$time_point)
 deseq_samples$replicate <- factor(deseq_samples$replicate)

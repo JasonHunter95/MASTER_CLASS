@@ -35,13 +35,16 @@ You can also install each package within tidyverse seperate.
 # To this end just repeat the above install.packages for the following
 (remember to use quotes around the package name.)
 
-install.package("dplyr")
-install.package("IRanges")
-install.package("ggplot2")
-install.package("purrr")
-install.package("readr")
-install.package("tibble")
-install.package("tidyr")
+```{r}
+# modified to install each package with more ease
+install.packages("dplyr")
+install.packages("IRanges")
+install.packages("ggplot2")
+install.packages("purrr")
+install.packages("readr")
+install.packages("tibble")
+install.packages("tidyr")
+```
 
 # Bioconductor is another key repository for R packages - geared toward Bioinformatics.
 For example DEseq2 is a package built to analyze RNAseq and we will be using this for class.
@@ -51,11 +54,9 @@ However Bioconductor is not built directly into R - so we need to install an ins
 # Install BiocManager:
 In your R console (" > " prompt)
 ```{r}
-
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
-BiocManager::install(version = "3.18")
-
+BiocManager::install(version = "3.20")
 ```
 Voila BiocManager is installed !
 
@@ -85,7 +86,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(DEseq2)
 library(dplyr)
 # continue the list of all needed packages
-
 ```
 We will run this first section and it will load the packages that have library(packagename)
 # Note when loading you don't need quotes around package name but you do when installing.
