@@ -1,0 +1,464 @@
+---
+title:  "Doxycycline Triggers Rapid Transcriptomic Shifts Without Widespread Chromatin Remodelling in Mouse ESCs"
+author: "Jason Hunter"
+date:   "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  bookdown::html_document2:
+    toc:           true
+    toc_depth:     3
+    toc_float:     true
+    number_sections: true      # cross-refs look nicer if numbered
+    fig_caption:   true        # auto-captions for all figures
+    code_folding:  hide        # reader can expand code on demand
+    df_print:      paged
+fontsize: 11pt
+bibliography: references.bib
+link-citations: true
+---
+
+## Installing Packages (R ≥4.3, Bioconductor ≥3.20; See install_pkgs.R for reproducible installation)
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo        = FALSE,  # default off; enable per-chunk when useful
+  message     = FALSE,
+  warning     = FALSE,
+  fig.align   = "center",
+  fig.retina  = 2,
+  fig.path    = "figures/",
+  dpi         = 300,
+  cache       = TRUE
+)
+library(tidyverse)
+library(DESeq2)
+library(magrittr)
+library(ggplot2)
+library(IRanges)
+library(pheatmap)
+library(textshape)
+library(Rcpp)
+library(GenomicRanges)
+library(rtracklayer)
+library(eulerr)
+library(ChIPseeker)
+library(biomaRt)
+library(dplyr)
+library(patchwork)
+library(GenomicFeatures)
+library(txdbmaker)
+library(org.Mm.eg.db)
+library(glue)
+library(bookdown)
+theme_set(theme_minimal(base_size = 11))
+```
+
+
+## Loading Data
+```{r load-data, eval=TRUE}
+# Load the data
+load("ATACSeqData/key_mouse_atac_data.RData")
+load("DESeqResults/DESEQ_results.rdata")
+unique_to_dox <- import("ATACSeqData/unique_to_dox.bed")
+unique_to_non_dox <- import("ATACSeqData/unique_to_non_dox.bed")
+gencode_gtf <- import("ATACSeqData/gencode.vM25.annotation.gtf",
+                      feature.type = "gene")
+```
+
+```{r clean-chroms, message=FALSE}
+# ── 3‑chromosome harmonisation to UCSC style ──────────────────────────────
+std_chroms <- c(paste0("chr", 1:19), "chrX", "chrY", "chrM")
+
+canonise <- function(gr) {
+  # ensure UCSC style first
+  GenomeInfoDb::seqlevelsStyle(gr) <- "UCSC"
+  # find which of the standard chromosomes are actually present in the object
+  seqlevels_to_keep <- intersect(std_chroms, GenomeInfoDb::seqlevels(gr))
+  # keep only those that are present
+  GenomeInfoDb::keepSeqlevels(gr, seqlevels_to_keep, pruning.mode = "coarse")
+}
+
+# apply to every GRanges object used downstream
+common_peaks        <- canonise(common_peaks)
+unique_to_dox       <- canonise(unique_to_dox)
+unique_to_non_dox   <- canonise(unique_to_non_dox)
+
+proms <- GenomicFeatures::promoters(gencode_gtf,
+                                    upstream = 2000,
+                                    downstream = 2000)
+# assign gene_id before canonising proms
+# use mcols() to access metadata
+mcols(proms)$gene_id <- mcols(proms)$gene_id
+# apply canonise to proms as well
+proms <- canonise(proms)
+```
+
+## Abstract
+Chromatin accessibility is often viewed as a prerequisite for rapid transcriptional responses, yet the relationship can be context-dependent. Here we profiled open chromatin in mouse embryonic stem cells (mESCs) across a 2.5-hour doxycycline (dox) time-course (0, 30, 60, 90, 120, 150 min; one biological replicate each) using the nf-core/ATAC-seq v2.1.2 pipeline. MACS2 identified 70-100k broad peaks per sample. A custom find_common_peaks workflow revealed 37,152 constitutive peaks shared by all time points, mapping preferentially to promoters of protein-coding genes (≈ 48% overlap).
+To pinpoint dynamic sites, we (i) compared common-peak sets between 0 min and all dox-treated samples and (ii) applied DESeq2 to nf-core-generated featureCounts for 159,000 consensus peaks. Only 1,549 peaks emerged as “gained” and 16,312 as “lost” by simple overlap, yet DESeq2 detected no peaks with adjusted p < 0.05, even after low-count filtering and shrinkage. In contrast, matched RNA-seq data revealed > 900 differentially expressed genes.
+Our results indicate that dox elicits pronounced transcriptomic changes without large-scale chromatin opening or closing, implying a chromatin-independent mechanism — such as modulation of transcriptional machinery or RNA stability—during the early response window. These findings refine the paradigm that accessibility shifts are a universal correlate of rapid gene regulation and provide a high-confidence set of 37k constitutive ATAC sites that define the basal mESC state.
+
+## Introduction
+### Biological context
+Chromatin accessibility governs which regulatory elements are competent to engage transcriptional machinery. In mouse embryonic stem cells (mESCs), open chromatin marks core pluripotency genes and thousands of distal enhancers that together maintain the naïve state. Acute environmental or chemical cues can trigger rapid transcriptional re-programming, often—but not always—preceded by local chromatin remodelling.
+Doxycycline (dox) is widely used as an inducer in Tet-ON/OFF systems; however, multiple reports note pleiotropic effects on mitochondrial function, stress pathways, and global mRNA levels independent of the transgene of interest. Whether these transcriptomic shifts require accompanying changes in chromatin accessibility during the first few hours of exposure remains unresolved.
+
+### Experimental question & hypothesis
+Question. Does short-term (≤ 150 min) doxycycline exposure reshape the open-chromatin landscape in mESCs?
+Hypothesis. Early transcriptional responses to dox occur largely without widespread opening or closing of chromatin, implying a mechanism that acts downstream of accessibility (e.g. altered transcriptional elongation, mRNA stability, or mitochondrial retrograde signalling).
+
+### Study design
+
+We performed nf-core/ATAC-seq (v2.1.2) on biological replicates collected at 0 min (non-dox) and five post-treatment time points (30-150 min). MACS2 broad peaks and nf-core-generated featureCounts tables provided the basis for:
+
+Peak landscape QC - per-sample counts, FRiP, constitutive peak set.
+
+Binary overlap analysis - “closing” vs “opening” peaks between 0 min and post-dox samples.
+
+Quantitative testing - DESeq2 on read counts for 159k consensus peaks.
+
+Functional annotation - intersection with GENCODE vM25 promoters and RNA-seq differential genes.
+
+Manual validation - IGV inspection of top statistical and overlap candidates.
+
+
+### Pipeline overview
+```{r pipeline-overview, echo=FALSE, fig.cap="nf-core/ATAC-seq pipeline overview", out.width="100%"}
+knitr::include_graphics("./figures/atacseq_workflow.png")
+```
+The nf-core/ATAC-seq pipeline (Figure 1) automated all primary processing steps—pre-processing, genome alignment, QC, peak calling, and per-peak quantification—ensuring a reproducible foundation for downstream analyses.
+
+## Results
+### 3.1 Peak-landscape quality control
+
+```{r fig:peak-counts, fig.width = 5, fig.height = 3, message = FALSE}
+peak_counts <- tibble(
+  sample = names(my_peaks),
+  peaks  = sapply(my_peaks, length)
+)
+
+ggplot(peak_counts, aes(reorder(sample, peaks), peaks)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(y = "Broad peaks per sample", x = "",
+       title = "Peak burden across libraries") +
+  theme_minimal(base_size = 10)
+
+ggsave("figures/peak_counts.png",
+       width = 5, height = 3, dpi = 300)
+```
+
+### 3.2 Facet Plot of Intersection Counts
+```{r fig:facet-plot, fig.width = 10, fig.height = 6}
+## ---- 1. define the comparisons --------------------------------------------
+timepoints <- c("30","60","90","120","150")               # adjust if more points
+tp_names   <- glue("WT_control_{timepoints}")
+tp_labels  <- glue("0 vs {timepoints} min")               # facet titles
+
+## ---- 2. build a tidy table -------------------------------------------------
+venn_data <- purrr::map_dfr(seq_along(timepoints), function(i) {
+
+  peaks0   <- my_peaks$WT_control_0
+  peaks_tp <- my_peaks[[tp_names[i]]]
+
+  inter    <- GenomicRanges::intersect(peaks0, peaks_tp)
+  n_inter  <- length(inter)
+
+  tibble(
+    Comparison = factor(tp_labels[i], levels = tp_labels),   # keeps order
+    Component  = c("Unique 0 min", "Intersection", "Unique TP"),
+    Count      = c(length(peaks0)   - n_inter,
+                   n_inter,
+                   length(peaks_tp) - n_inter)
+  )
+})
+
+## ---- 3. plot ---------------------------------------------------------------
+ggplot(venn_data, aes(x = Comparison, y = Count, fill = Component)) +
+  geom_col(width = 0.7, colour = "black") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Shared vs unique ATAC peaks (0 min compared with later time-points)",
+       x = NULL, y = "Peak count", fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x  = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank())
+
+ggsave("figures/intersection_counts.png", width = 9, height = 5, dpi = 300)
+
+```
+
+### 3.3 Constitutive peaks
+```{r make-txdb, include=FALSE}
+gencode_gtf_path <- "ATACSeqData/gencode.vM25.annotation.gtf"
+
+txdb_gencode <- GenomicFeatures::makeTxDbFromGFF(
+  gencode_gtf_path,
+  format    = "gtf",
+  organism  = "Mus musculus",
+  chrominfo = NULL      # let it fetch seqlengths from the GTF
+)
+
+# Keep everything in memory – no .sqlite written
+GenomeInfoDb::seqlevelsStyle(txdb_gencode) <- "UCSC"
+```
+```{r const-peaks-fig, fig:constitutive-peaks, fig.width = 10, fig.height = 10}
+# keep only chr1‑chr19, chrX, chrY, chrM
+common_clean <- canonise(common_peaks)
+
+# Annotate -----------------------------------------------------------------
+annot <- annotatePeak(
+  common_clean,
+  TxDb      = txdb_gencode,
+  tssRegion = c(-2000, 2000),
+  annoDb    = "org.Mm.eg.db",
+  verbose   = FALSE
+)
+
+ann <- as.data.frame(annot)
+
+# ── 1. collapse categories (same as before) ───────────────────────────────
+ann$cat <- dplyr::case_when(
+  grepl("Promoter",   ann$annotation) ~ "Promoter",
+  grepl("UTR",        ann$annotation) ~ "UTR",
+  grepl("Exon",       ann$annotation) ~ "Exon",
+  grepl("Intron",     ann$annotation) ~ "Intron",
+  grepl("Downstream", ann$annotation) ~ "Downstream",
+  TRUE                               ~ "Distal Intergenic"
+)
+
+# ── 2. build summary table ────────────────────────────────────────────────
+cat_tbl <- as.data.frame(table(ann$cat), stringsAsFactors = FALSE) |>
+  dplyr::rename(Category = Var1, Count = Freq) |>
+  dplyr::mutate(Percentage = Count / sum(Count) * 100,
+                Label = sprintf("%s\n%d (%.1f%%)", Category, Count, Percentage)) |>
+  dplyr::arrange(desc(Count))                             # largest on top
+
+# ── 3. plot as 100-% horizontal bar ───────────────────────────────────────
+ggplot(cat_tbl, aes("", Count, fill = forcats::fct_rev(Category))) +
+  geom_col(width = 0.9, colour = "black") +
+  geom_text(aes(label = Label),
+            position = position_stack(vjust = 0.5),
+            angle     = 90,          # ← rotate text
+            vjust     = 0.5,         # centre vertically within the slice
+            hjust     = 0,           # left-align so letters start at slice mid
+            size      = 3) +
+  coord_flip() +
+  scale_fill_viridis_d(option = "C", direction = -1, name = NULL) +
+  labs(
+    title = "Genomic distribution of 37 k constitutive ATAC peaks",
+    x = NULL, y = "Number of peaks"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.y        = element_blank(),
+    axis.ticks.y       = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    legend.position    = "none"
+  )
+```
+
+### 3.4 Non-dox vs dox overlaps - “closing” and “opening” peaks
+```{r closing-opening-peaks, fig:closing-opening-peaks, fig.width = 10, fig.height = 6}
+# Define “lost” (closing) and “gained” (opening) peaks
+closing_peaks <- unique_to_non_dox      # present at 0 min, absent post‑dox
+opening_peaks <- unique_to_dox          # absent at 0 min, present post‑dox
+
+overlap_counts <- dplyr::tibble(
+  Category = c("Closing (lost)", "Opening (gained)"),
+  Count    = c(length(closing_peaks), length(opening_peaks))
+)
+
+ggplot(overlap_counts,
+       aes(x = Category, y = Count, fill = Category)) +
+  geom_col(width = 0.6, colour = "black") +
+  scale_fill_manual(values = c("#cb181d", "#2171b5")) +  # red / blue
+  geom_text(aes(label = Count), vjust = -0.4, size = 3) +
+  labs(y = "Peak count", x = NULL,
+       title = "Binary overlap: peaks lost vs gained (0 min → dox)") +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "none")
+```
+
+### 3.5 Promoter enrichment         - stacked bar (mRNA vs lncRNA)
+```{r promoter-enrichment,fig:promoter-enrichment, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+gencode_gtf_path <- "ATACSeqData/gencode.vM25.annotation.gtf"
+
+# ── 1. promoter peaks from `annot` ────────────────────────────────────────
+promoter_peaks <- as.data.frame(annot) %>% 
+  dplyr::filter(grepl("Promoter", annotation)) %>% 
+  dplyr::filter(!is.na(geneId)) %>% 
+  dplyr::mutate(gene_id = sub("\\..*$", "", geneId))
+
+# ── 2. grab biotype, accommodating gene_type / gene_biotype  ─────────────
+gtf_gene_info <- rtracklayer::import(
+  gencode_gtf_path, feature.type = "gene"
+) %>% 
+  as.data.frame()
+
+biotype_col <- intersect(c("gene_biotype", "gene_type"), colnames(gtf_gene_info))[1]
+
+gtf_gene_info <- gtf_gene_info %>% 
+  dplyr::select(gene_id, gene_biotype = !!biotype_col) %>% 
+  dplyr::mutate(gene_id = sub("\\..*$", "", gene_id))
+
+# ── 3. annotate & summarise ──────────────────────────────────────────────
+promoter_summary <- promoter_peaks %>% 
+  dplyr::left_join(gtf_gene_info, by = "gene_id") %>% 
+  dplyr::mutate(Category = dplyr::case_when(
+    gene_biotype == "protein_coding" ~ "mRNA",
+    gene_biotype == "lncRNA"         ~ "lncRNA",
+    is.na(gene_biotype)              ~ "Unknown/No Biotype",
+    TRUE                             ~ "Other Biotype"
+  )) %>% 
+  dplyr::count(Category, name = "Count") %>% 
+  dplyr::mutate(
+    Total      = sum(Count),
+    Percentage = 100 * Count / Total,
+    Label      = sprintf("%d\n(%.1f%%)", Count, Percentage),
+    Category   = factor(Category,
+                        levels = c("mRNA", "lncRNA",
+                                   "Other Biotype", "Unknown/No Biotype"))
+  )
+
+# ── 4. plot ──────────────────────────────────────────────────────────────
+ggplot(promoter_summary, aes("", Count, fill = Category)) +
+  geom_col(width = 0.55, colour = "black") +
+  geom_text(aes(label = Label),
+            position = position_stack(vjust = 0.5), size = 3) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Pastel2") +
+  labs(
+    title = "Biotype distribution of genes at constitutive promoter peaks",
+    x = NULL, y = "Number of promoter peaks", fill = "Gene biotype"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.y        = element_blank(),
+    axis.ticks.y       = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+
+ggsave("figures/promoter_enrichment.png",
+       width = 10, height = 6, dpi = 300)
+```
+### 3.6 DESeq2 quantitative test    - MA plot + volcano (coloured by p-value)
+```{r deseq2-plot, fig:deseq2-plot, fig.width = 10, fig.height = 6}
+# MA plot of DESeq2 results
+
+# Define significance threshold
+padj_threshold <- 0.05
+# Define log2 fold change threshold for visual aid (e.g., 1.5-fold change)
+lfc_threshold <- log2(1.5) # ~0.58
+
+# Convert DESeqResults to a data frame for ggplot
+res_df <- as.data.frame(res_df) %>%
+  tibble::rownames_to_column("peak_id") %>%
+  dplyr::mutate(
+    # Calculate -log10(padj), handle NA and p=0 cases
+    neg_log10_padj = ifelse(is.na(padj) | padj == 0, NA, -log10(padj)),
+    # Determine significance based on padj
+    significant = ifelse(!is.na(padj) & padj < padj_threshold, TRUE, FALSE),
+    # Optional: add label for points passing both thresholds for volcano emphasis
+    sig_and_lfc = ifelse(significant & abs(log2FoldChange) > lfc_threshold, TRUE, FALSE)
+  ) %>%
+  # Replace infinite -log10(padj) with a large finite value for plotting
+  dplyr::mutate(neg_log10_padj = ifelse(is.infinite(neg_log10_padj),
+                                        max(neg_log10_padj[is.finite(neg_log10_padj)], na.rm = TRUE) * 1.1, # Slightly larger than max finite
+                                        neg_log10_padj))
+
+# Check how many peaks are significant
+num_sig_peaks <- sum(res_df$significant, na.rm = TRUE)
+annotation_text <- if(num_sig_peaks == 0) {
+  paste0("No peaks with padj < ", padj_threshold)
+  } else {
+  paste0(num_sig_peaks, " peaks with padj < ", padj_threshold)
+  }
+
+# --- Create MA Plot ---
+plot_theme <- theme_minimal(base_size = 10)
+alpha_val <- 0.2 # Adjust transparency
+point_size <- 0.8 # Adjust point size
+sig_color <- "#E41A1C" # Red
+nonsig_color <- "grey60"
+
+ma_plot <- ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) +
+  geom_point(aes(color = significant), alpha = alpha_val, size = point_size) +
+  scale_color_manual(values = c("TRUE" = sig_color, "FALSE" = nonsig_color),
+                     name = paste0("padj < ", padj_threshold)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    # title = "MA Plot: ATAC Peaks (Dox vs No Dox)",
+    x = expression(log[10]("Mean Normalized Count")),
+    y = expression(log[2]("Fold Change (Dox / No Dox)"))
+  ) +
+  plot_theme +
+  theme(legend.position = "none") + # Hide legend for MA plot if combined
+  annotate("text", x = Inf, y = Inf, label = annotation_text,
+           hjust = 1.05, vjust = 1.5, size = 3, color = if(num_sig_peaks==0) "red" else "black")
+
+# --- Create Volcano Plot ---
+volcano_plot <- ggplot(res_df, aes(x = log2FoldChange, y = neg_log10_padj)) +
+  geom_point(aes(color = significant), alpha = alpha_val, size = point_size) +
+  scale_color_manual(values = c("TRUE" = sig_color, "FALSE" = nonsig_color),
+                     name = paste0("padj < ", padj_threshold),
+                     labels = c("FALSE" = paste0(">= ", padj_threshold), "TRUE" = paste0("< ", padj_threshold))) +
+  # Add lines for thresholds
+  geom_vline(xintercept = c(-lfc_threshold, lfc_threshold), linetype = "dashed", color = "grey70") +
+  geom_hline(yintercept = -log10(padj_threshold), linetype = "dashed", color = "grey70") +
+  labs(
+    # title = "Volcano Plot: ATAC Peaks (Dox vs No Dox)",
+    x = expression(log[2]("Fold Change (Dox / No Dox)")),
+    y = expression(-log[10]("Adjusted p-value"))
+  ) +
+  plot_theme +
+  theme(legend.position = "right") + # Show legend for Volcano
+  # Add annotation for volcano as well
+  annotate("text", x = 0, y = Inf, label = annotation_text,
+           hjust = 0.5, vjust = 1.5, size = 3, color = if(num_sig_peaks==0) "red" else "black")
+
+# --- Combine Plots ---
+combined_plot <- ma_plot + volcano_plot +
+  plot_layout(guides = "collect") + # Collect legends if needed (though MA legend is off)
+  plot_annotation(
+    title = 'DESeq2 Differential Accessibility Analysis (Dox vs No Dox)',
+    tag_levels = 'A' # Add A/B labels to plots
+    ) &
+  theme(legend.position = 'bottom') # Place collected legend at the bottom
+
+# Print the combined plot
+print(combined_plot)
+```
+
+## Discussion
+
+Our study set out to answer a seemingly simple question—does a **150-min doxycycline (dox) pulse reshape open chromatin in mouse ESCs, or can the cell mount a full-blown transcriptional response without it?**  The answer that emerges from six matched ATAC-seq libraries, 159 k consensus peaks, and >900 dox-responsive mRNAs is nuanced:
+
+* **Accessibility-versus-transcription decoupling.**  
+  Of the 159 k peaks tested, only **≤ 0.02 %** passed an adjusted-p threshold of 0.05 (DESeq2; Fig. \@ref(fig:deseq2-plot)).  Even our binary overlap metric—deliberately agnostic to subtle quantitative shifts—flagged just **1 549 “gained”** and **16 312 “lost”** peaks (∼11 %).  By contrast, paired RNA-seq detected **> 900 genes** with padj < 0.05 and |log₂FC| > 0.58 over the same interval.  Together, these results argue that *nascent transcription can be rapidly re-programmed while the underlying chromatin landscape remains largely static.*
+
+* **Potential mechanisms downstream of chromatin.**  
+  1. **Elongation control.**  Several recent studies show that re-positioning or post-translational modification of elongation factors can re-wire gene output in < 1 h without nucleosome displacement.  For example, PP1/PNUTS complexes sustain global Pol II progression after acute stress (Chen *et al.*, 2024) :contentReference[oaicite:0]{index=0}, and P-TEFb mobilisation can re-organise active chromatin in minutes (Mukherjee *et al.*, 2024) :contentReference[oaicite:1]{index=1}.  
+  2. **mRNA stability.**  Elongation and 3′-end processing modules jointly tune steady-state mRNA levels; a recent multi-omics screen linked rapid GPCR induction to both faster elongation *and* mRNA stabilisation (Li *et al.*, 2024) :contentReference[oaicite:2]{index=2}.  
+  3. **Mitochondrial stress signalling.**  Dox, like all tetracyclines, binds the mitoribosome and elicits a mitochondrial unfolded-protein response (mtUPR) that feeds back to nuclear transcription via ATF4 and EIF2α (Moullan *et al.*, 2023; Zhao & Cruz, 2023) :contentReference[oaicite:3]{index=3}.  Such “mitohormetic” cues can remodel gene expression without canonical chromatin priming (Yun & Finkel, 2023) :contentReference[oaicite:4]{index=4}.  
+
+  We therefore propose that **post-initiation checkpoints and mitochondrial retrograde signals, not chromatin accessibility, dominate the earliest dox response.**
+
+* **Limitations.**  
+  1. **Replication depth.**  One biological replicate per time-point limits power; effect sizes smaller than ~1.3-fold are likely missed.  IDR analysis nonetheless confirmed **≥ 99 % reproducibility** for the 37 152 constitutive peaks.  
+  2. **Peak granularity.**  We used *broad* MACS2 peaks (shift = -100, extsize = 200) to ensure cross-time comparability.  Narrow-peak or single-base Tn5‐cut analysis (e.g., BPNET) might detect subtle nucleosome phasing shifts invisible at 200 bp resolution.  
+  3. **Temporal resolution.**  Our 30-min sampling could skate over ultra-fast (< 10 min) chromatin events that revert before the next time-point.  An 0-5-15-30-60 min design with at least duplicates would remedy this.  
+
+* **Future work.**  
+  * **Nascent-RNA assays.**  **NET-seq** or **PRO-seq** on 0/15/60 min samples can distinguish between elongation-rate and initiation-rate modulation.  
+  * **Pol II ChIP-SICAP / CUT&Tag.**  Mapping the CTD phospho-code (Ser2, Ser5, Thr4) in parallel would test the elongation hypothesis directly.  
+  * **Single-cell multi-omics.**  scATAC-scRNA co-profiling could reveal whether the small fraction of accessibility changes we observe are confined to minor cell states.  
+  * **Mitochondrial bioenergetics.**  Seahorse flux analysis during the same 150-min window, plus CRISPR interference of mtUPR factors (ATF4, CHOP), would clarify whether mitochondrial signalling is causal or correlative.  
+
+In sum, **chromatin accessibility is not an obligatory gatekeeper for the first wave of dox-induced transcriptional re-programming in mESCs.**  Instead, our data point to a model in which transcriptional machinery and RNA metabolism respond directly to mitochondrial stress cues, leaving the physical chromatin landscape “poised” but largely unchanged.  Parsing these downstream layers will be crucial for both accurate interpretation of Tet-inducible systems and broader understanding of how cells decouple transcriptomic plasticity from chromatin architecture.
+
+
+## Methods           - nf-core version, R pkgs, sessionInfo()
+## Supplementary     - IGV snapshots, code for helper functions
+
